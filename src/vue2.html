@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue3 Reactive</title>
+</head>
+
+<body>
+
+    <script>
+        const data = { text: 'hello world' }
+        // 存储副作用函数的桶
+        const bucket = new WeakMap()
+        const obj = new Proxy(data, {
+            get(target, key) {
+                debugger
+                track(target, key)
+                return target[key]
+            },
+            set(target, key, newVal) {
+                target[key] = newVal;
+                trigger(target, key)
+
+            }
+        })
+
+        // 依赖收集方法
+        function track(target, key) {
+            // 如果没有 activeEffect，直接 return
+            if (!activeEffect) return;
+            // 根据 target 从「桶」里取得 depsMap, 它是个 map 类型： key --- effects
+            let depsMap = bucket.get(target)
+            // 如果不存在 depsMap，则新建一个 Map 与 target 相关联
+            if (!depsMap) {
+                bucket.set(target, (depsMap = new Map()))
+            }
+            // 根据 depsMap 的 key 取得 deps，它是一个 set 类型
+            let deps = depsMap.get(key)
+            // 如果 deps 不存在，新建一个 Set 与 key 关联，里面存储着所有与当前 key 相关联的副作用函数：effects
+            if (!deps) {
+                depsMap.set(key, (deps = new Set()))
+            }
+            // 最后把激活的 activeEffect 放到桶里
+            deps.add(activeEffect)
+            //deps 是一个与当前副作用函数存在联系的依赖集合
+            activeEffect.deps.push(deps)
+        }
+
+        // 派发更新
+        function trigger(target, key) {
+            // 从桶里取出第一层
+            const depsMap = bucket.get(target);
+            if (!depsMap) return;
+            // 取出第二层
+            const effects = depsMap.get(key)
+
+            // 为了防止在 遍历中，重新有新有 set 值，所以需要另一个 set 来执行；
+            const effectToRun = new Set(effects)// 新增
+            //执行副作用函数
+            effectToRun.forEach(effectFn => effectFn())
+            // effects && effects.forEach(element => element());
+        }
+
+        let activeEffect
+        function effect(fn) {
+            const effectFn = () => {
+                cleanup(effectFn)
+                // 当调用 effect 注册副作用函数时，把副作用函数赋值给 activeEffect
+                activeEffect = effectFn
+                fn()
+            }
+            // 清空 activeEffect.deps 存储的集合
+            effectFn.deps = []
+            // 执行副作用函数
+            effectFn()
+        }
+
+        function cleanup(effectFn) {
+            for (let i = 0; i < effectFn.deps.length; i++) {
+                // deps 是依赖集合
+                const deps = effectFn.deps[i]
+                // 将 effectFn 从依赖中移除
+                deps.delete(effectFn)
+            }
+            effectFn.deps[i].length = 0
+        }
+
+
+    </script>
+</body>
+
+</html>
