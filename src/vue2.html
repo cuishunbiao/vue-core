@@ -10,9 +10,7 @@
 <body>
 
     <script>
-        const data = { text: 'hello world' }
-        // 存储副作用函数的桶
-        const bucket = new WeakMap()
+        const data = { foo: 1 }
         const obj = new Proxy(data, {
             get(target, key) {
                 debugger
@@ -26,6 +24,15 @@
             }
         })
 
+        effect(() => {
+            console.log(obj.foo)
+        })
+        obj.foo++
+
+        console.log('结束了')
+
+        // 存储副作用函数的桶
+        const bucket = new WeakMap()
         // 依赖收集方法
         function track(target, key) {
             // 如果没有 activeEffect，直接 return
@@ -58,18 +65,31 @@
 
             // 为了防止在 遍历中，重新有新有 set 值，所以需要另一个 set 来执行；
             const effectToRun = new Set(effects)// 新增
+            effect && effect.forEach(effectFn => {
+                // 如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
+                if (effectFn !== activeEffect) {
+                    effectToRun.push(effectFn)
+                }
+            })
             //执行副作用函数
             effectToRun.forEach(effectFn => effectFn())
-            // effects && effects.forEach(element => element());
         }
 
-        let activeEffect
+        let activeEffect; // 因为只能指向一个「副作用函数」，所以需要增加「栈」来处理嵌套副作用函数
+        const effectStack = []
         function effect(fn) {
             const effectFn = () => {
                 cleanup(effectFn)
                 // 当调用 effect 注册副作用函数时，把副作用函数赋值给 activeEffect
                 activeEffect = effectFn
+                // 在调用副作用函数之前，把函数压入栈中
+                effectStack.push(effectFn)
                 fn()
+                // 副作用函数执行完后，移除栈顶元素
+                effectStack.pop()
+                // 把副作用函数还原成「原来的值，也就是嵌套中上一层的方法」
+                // ? 如果没有长度，不处理么？
+                activeEffect = effectStack[effectStack.length - 1]
             }
             // 清空 activeEffect.deps 存储的集合
             effectFn.deps = []
@@ -86,7 +106,6 @@
             }
             effectFn.deps[i].length = 0
         }
-
 
     </script>
 </body>
